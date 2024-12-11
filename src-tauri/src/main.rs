@@ -12,6 +12,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(target_os = "linux")]
+use enigo::Keyboard;
+
 // Embed icon files directly into the executable
 static ICON_ALLOW: &[u8] = include_bytes!("../icons/icon-allow-32x32.png");
 static ICON_BLOCK: &[u8] = include_bytes!("../icons/icon-block-32x32.png");
