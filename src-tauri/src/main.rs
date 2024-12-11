@@ -12,19 +12,51 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use enigo::{Enigo, Key, Direction, Settings, Keyboard};
+use std::fs;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::env;
 
 // Embed icon files directly into the executable
 static ICON_ALLOW: &[u8] = include_bytes!("../icons/icon-allow-32x32.png");
 static ICON_BLOCK: &[u8] = include_bytes!("../icons/icon-block-32x32.png");
 
+#[derive(Serialize, Deserialize, Default)]
+struct AppState {
+    sleep_disabled: bool,
+}
+
+fn get_state_file_path() -> PathBuf {
+    let mut path = env::current_exe()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf();
+    path.push("config");
+    fs::create_dir_all(&path).unwrap_or_default();
+    path.push("state.json");
+    path
+}
+
+fn save_state(sleep_disabled: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let state = AppState { sleep_disabled };
+    let path = get_state_file_path();
+    let json = serde_json::to_string_pretty(&state)?;
+    fs::write(path, json)?;
+    Ok(())
+}
+
+fn load_state() -> AppState {
+    let path = get_state_file_path();
+    match fs::read_to_string(path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => AppState::default(),
+    }
+}
+
 // Function to convert embedded icon data to RGBA
 fn get_icon(is_sleep_disabled: bool) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let icon_data = if is_sleep_disabled {
-        ICON_BLOCK
-    } else {
-        ICON_ALLOW
-    };
-    
+    let icon_data = if is_sleep_disabled { ICON_BLOCK } else { ICON_ALLOW };
     let img = image::load_from_memory(icon_data)?;
     let rgba = img.into_rgba8();
     Ok(rgba.into_raw())
@@ -54,7 +86,8 @@ async fn keep_awake(running: Arc<AtomicBool>) {
 
 #[tokio::main]
 async fn main() {
-    let sleep_disabled = Arc::new(AtomicBool::new(false));
+    let state = load_state();
+    let sleep_disabled = Arc::new(AtomicBool::new(state.sleep_disabled));
     let sleep_disabled_clone = sleep_disabled.clone();
 
     tauri::Builder::default()
@@ -67,12 +100,23 @@ async fn main() {
             let toggle_autostart_id = MenuId::new("toggle_autostart");
             let quit_id = MenuId::new("quit");
             
-            let toggle_sleep_item = MenuItemBuilder::with_id(toggle_sleep_id.clone(), "Disable Sleep")
+            let toggle_sleep_item = MenuItemBuilder::with_id(toggle_sleep_id.clone(), 
+                if state.sleep_disabled { "Enable Sleep" } else { "Disable Sleep" })
                 .build(handle)?;
             
-            // Get current autostart state
+            // Get current autostart state and update path if enabled
             let autostart_manager = handle.autolaunch();
             let is_autostart = autostart_manager.is_enabled().unwrap_or(false);
+            
+            // If autostart is enabled, update the path to current executable
+            if is_autostart {
+                // Disable and re-enable to update the path
+                if let Ok(()) = autostart_manager.disable() {
+                    if let Err(e) = autostart_manager.enable() {
+                        eprintln!("Failed to update autostart path: {}", e);
+                    }
+                }
+            }
             
             let toggle_autostart_item = MenuItemBuilder::with_id(toggle_autostart_id.clone(), 
                 if is_autostart { "\u{2713} Start at Login" } else { "Start at Login" })
@@ -91,12 +135,24 @@ async fn main() {
             let toggle_sleep_item = Arc::new(toggle_sleep_item);
             let toggle_sleep_item_clone = toggle_sleep_item.clone();
 
-            let icon_data = get_icon(false).expect("Failed to get icon data");
+            let icon_data = get_icon(state.sleep_disabled).expect("Failed to get icon data");
             let tray = TrayIconBuilder::new()
                 .icon(Image::new(icon_data.as_slice(), 32, 32))
                 .menu(&tray_menu)
-                .tooltip("Awake - Sleep prevention disabled")
+                .tooltip(if state.sleep_disabled { 
+                    "Awake - Sleep prevention enabled" 
+                } else { 
+                    "Awake - Sleep prevention disabled" 
+                })
                 .build(handle)?;
+
+            // If sleep was disabled in previous session, start the keep-awake task
+            if state.sleep_disabled {
+                let running = sleep_disabled.clone();
+                tokio::spawn(async move {
+                    keep_awake(running).await;
+                });
+            }
 
             let tray_handle = tray.clone();
             
@@ -105,6 +161,7 @@ async fn main() {
                     let is_disabled = sleep_disabled.load(Ordering::SeqCst);
                     if !is_disabled {
                         sleep_disabled.store(true, Ordering::SeqCst);
+                        let _ = save_state(true);
                         let _ = toggle_sleep_item_clone.set_text("Enable Sleep");
                         if let Ok(icon_data) = get_icon(true) {
                             let _ = tray_handle.set_icon(Some(Image::new(
@@ -114,13 +171,13 @@ async fn main() {
                             )));
                             let _ = tray_handle.set_tooltip(Some("Awake - Sleep prevention enabled"));
                         }
-                        // Start the keep-awake task
                         let running = sleep_disabled.clone();
                         tokio::spawn(async move {
                             keep_awake(running).await;
                         });
                     } else {
                         sleep_disabled.store(false, Ordering::SeqCst);
+                        let _ = save_state(false);
                         let _ = toggle_sleep_item_clone.set_text("Disable Sleep");
                         if let Ok(icon_data) = get_icon(false) {
                             let _ = tray_handle.set_icon(Some(Image::new(

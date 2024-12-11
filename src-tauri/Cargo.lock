@@ -108,6 +108,8 @@ version = "1.0.0"
 dependencies = [
  "enigo",
  "image",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
