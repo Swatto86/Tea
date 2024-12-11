@@ -20,11 +20,11 @@
     "active": true,
     "targets": ["deb", "rpm", "dmg", "msi"],
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon-block-32x32.png",
+      "icons/icon-block-128x128.png",
+      "icons/icon-block-128x128@2x.png",
+      "icons/icon-block-icon.icns",
+      "icons/icon-block-icon.ico"
     ],
     "resources": [
       "icons/icon-allow-32x32.png",
