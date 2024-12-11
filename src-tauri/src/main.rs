@@ -10,7 +10,6 @@ use tauri::{
 use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use enigo::{Enigo, Key, Direction, Settings, Keyboard};
 use std::time::Duration;
 
 // Embed icon files directly into the executable
@@ -32,6 +31,7 @@ fn get_icon(is_sleep_disabled: bool) -> Result<Vec<u8>, Box<dyn std::error::Erro
 
 #[cfg(target_os = "linux")]
 async fn keep_awake(running: Arc<AtomicBool>) {
+    use enigo::{Enigo, Key, Direction, Settings};
     let settings = Settings::default();
     let mut enigo = match Enigo::new(&settings) {
         Ok(enigo) => enigo,
@@ -44,6 +44,24 @@ async fn keep_awake(running: Arc<AtomicBool>) {
     while running.load(Ordering::SeqCst) {
         let _ = enigo.key(Key::F15, Direction::Click);
         tokio::time::sleep(Duration::from_secs(60)).await;
+    }
+}
+
+#[cfg(target_os = "windows")]
+async fn keep_awake(running: Arc<AtomicBool>) {
+    use windows::Win32::System::Power::SetThreadExecutionState;
+    use windows::Win32::System::Power::{ES_CONTINUOUS, ES_SYSTEM_REQUIRED, ES_DISPLAY_REQUIRED};
+    
+    unsafe {
+        SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED);
+    }
+    
+    while running.load(Ordering::SeqCst) {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+    }
+    
+    unsafe {
+        SetThreadExecutionState(ES_CONTINUOUS);
     }
 }
 
