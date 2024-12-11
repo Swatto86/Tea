@@ -1,6 +1,6 @@
 # Awake
 
-A cross-platform system tray application that prevents your system from going to sleep. Built with Rust and Tauri.
+A cross-platform system tray application that prevents your system from going to sleep. Built with Rust and Tauri 2.0.
 
 ![Awake Icon](src-tauri/icons/icon-allow-32x32.png)
 
@@ -16,19 +16,19 @@ A cross-platform system tray application that prevents your system from going to
 ## Installation
 
 ### Pre-built Binaries
-Download the latest release for your platform from the [Releases](https://github.com/yourusername/awake/releases) page.
+Download the latest release for your platform from the [Releases](https://github.com/Swatto86/awake/releases) page.
 
 ### Building from Source
 
 #### Prerequisites
 - [Rust](https://rustup.rs/) (1.70.0 or later)
 - [Node.js](https://nodejs.org/) (18.0.0 or later)
-- Platform-specific dependencies for Tauri - [See Tauri Prerequisites](https://tauri.app/v1/guides/getting-started/prerequisites)
+- Platform-specific dependencies for Tauri - [See Tauri Prerequisites](https://tauri.app/v2/guides/getting-started/prerequisites)
 
 #### Build Steps
 1. Clone the repository
    ```bash
-   git clone https://github.com/yourusername/awake.git
+   git clone https://github.com/Swatto86/awake.git
    cd awake
    ```
 
@@ -78,5 +78,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- Built with [Tauri](https://tauri.app/)
+- Built with [Tauri 2.0](https://tauri.app/)
 - Uses [enigo](https://github.com/enigo-rs/enigo) for cross-platform input simulation
