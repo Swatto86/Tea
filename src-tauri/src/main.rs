@@ -32,37 +32,61 @@ fn get_icon(is_sleep_disabled: bool) -> Result<Vec<u8>, Box<dyn std::error::Erro
 #[cfg(target_os = "linux")]
 async fn keep_awake(running: Arc<AtomicBool>) {
     use enigo::{Enigo, Key, Direction, Settings};
+    println!("[Linux] Starting keep_awake function");
     let settings = Settings::default();
     let mut enigo = match Enigo::new(&settings) {
         Ok(enigo) => enigo,
         Err(e) => {
-            eprintln!("Failed to initialize Enigo: {}", e);
+            eprintln!("[Linux] Failed to initialize Enigo: {}", e);
             return;
         }
     };
     
     while running.load(Ordering::SeqCst) {
+        println!("[Linux] Simulating F15 key press");
         let _ = enigo.key(Key::F15, Direction::Click);
         tokio::time::sleep(Duration::from_secs(60)).await;
     }
+    println!("[Linux] Exiting keep_awake function");
 }
 
 #[cfg(target_os = "windows")]
 async fn keep_awake(running: Arc<AtomicBool>) {
-    use windows::Win32::System::Power::SetThreadExecutionState;
-    use windows::Win32::System::Power::{ES_CONTINUOUS, ES_SYSTEM_REQUIRED, ES_DISPLAY_REQUIRED};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VK_F15
+    };
     
-    unsafe {
-        SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED);
-    }
-    
+    println!("[Windows] Starting keep_awake function");
     while running.load(Ordering::SeqCst) {
+        println!("[Windows] Simulating F15 key press");
+        unsafe {
+            // Create keyboard input for key press
+            let mut input = INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: VK_F15,
+                        wScan: 0,
+                        dwFlags: Default::default(),
+                        time: 0,
+                        dwExtraInfo: 0,
+                    }
+                }
+            };
+            
+            // Send key press
+            let result = SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+            println!("[Windows] Key press sent, result: {}", result);
+            
+            // Modify input for key release
+            input.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
+            let result = SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+            println!("[Windows] Key release sent, result: {}", result);
+        }
+        
         tokio::time::sleep(Duration::from_secs(60)).await;
     }
-    
-    unsafe {
-        SetThreadExecutionState(ES_CONTINUOUS);
-    }
+    println!("[Windows] Exiting keep_awake function");
 }
 
 #[tokio::main]

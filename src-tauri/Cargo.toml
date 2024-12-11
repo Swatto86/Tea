@@ -20,7 +20,7 @@ tauri-plugin-autostart = "2"
 tokio = { version = "1", features = ["time", "rt-multi-thread", "macros"] }
 image = { version = "0.24", default-features = false, features = ["png"] }
 enigo = "0.3.0"
-windows = { version = "0.52", features = ["Win32_System_Power"] }
+windows = { version = "0.52", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_Foundation"] }
 
 [profile.release]
 opt-level = "z"  # Optimize for size
