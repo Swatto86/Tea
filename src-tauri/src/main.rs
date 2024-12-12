@@ -27,15 +27,29 @@ struct AppState {
 }
 
 fn get_state_file_path() -> PathBuf {
-    let mut path = env::current_exe()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."))
-        .to_path_buf();
-    path.push("config");
-    fs::create_dir_all(&path).unwrap_or_default();
-    path.push("state.json");
-    path
+    #[cfg(target_os = "linux")]
+    {
+        let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let xdg_config = env::var("XDG_CONFIG_HOME")
+            .unwrap_or_else(|_| format!("{}/.config", home));
+        let mut path = PathBuf::from(xdg_config);
+        path.push("awake");
+        fs::create_dir_all(&path).unwrap_or_default();
+        path.push("state.json");
+        path
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let mut path = env::current_exe()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .to_path_buf();
+        path.push("config");
+        fs::create_dir_all(&path).unwrap_or_default();
+        path.push("state.json");
+        path
+    }
 }
 
 fn save_state(sleep_disabled: bool) -> Result<(), Box<dyn std::error::Error>> {
