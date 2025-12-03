@@ -11,6 +11,14 @@ edition = "2021"
 name = "awake_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[test]]
+name = "unit_tests"
+path = "tests/unit_tests.rs"
+
+[[test]]
+name = "integration_tests"
+path = "tests/integration_tests.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -22,6 +30,9 @@ image = { version = "0.24", default-features = false, features = ["png"] }
 enigo = "0.3.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+[dev-dependencies]
+tempfile = "3.8"
 
 [profile.release]
 opt-level = "z"  # Optimize for size
