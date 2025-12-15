@@ -18,6 +18,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![deny(warnings)]
 
+mod commands;
 mod core;
 mod error;
 mod icon;
@@ -25,12 +26,11 @@ mod persistence;
 mod platform;
 mod wake_service;
 
+use crate::commands::AppStateManager;
 use crate::core::{ScreenMode, TooltipText};
-use crate::persistence::{read_state, write_state, AppState};
-use crate::wake_service::WakeService;
+use crate::persistence::{read_state, AppState};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tauri::{image::Image, menu::{MenuBuilder, MenuId, MenuItemBuilder}, tray::TrayIconBuilder, Manager};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
@@ -58,16 +58,29 @@ async fn main() {
     let screen_mode_clone = screen_mode.clone();
     let initial_state = state;
 
-    tauri::Builder::default()
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
         ))
+        .manage(AppStateManager {
+            is_awake: is_awake_clone.clone(),
+            screen_mode: screen_mode_clone.clone(),
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::toggle_sleep,
+            commands::change_screen_mode,
+            commands::get_state,
+        ])
         .setup(move |app| {
             setup_tray(app, initial_state, is_awake_clone, screen_mode_clone)
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+
+    if let Err(e) = result {
+        log::error!("Fatal error running Tauri application: {}", e);
+        std::process::exit(1);
+    }
 }
 
 /// Setup system tray icon and menu
@@ -115,7 +128,10 @@ fn setup_tray(
 
     // Configure autostart
     let autostart_manager = handle.autolaunch();
-    let is_autostart = autostart_manager.is_enabled().unwrap_or(false);
+    let is_autostart = autostart_manager.is_enabled().unwrap_or_else(|e| {
+        log::warn!("Failed to check autostart status: {}", e);
+        false
+    });
 
     if is_autostart {
         // Update autostart path if already enabled
@@ -174,7 +190,9 @@ fn setup_tray(
     let screen_off_item_clone = screen_off_item.clone();
 
     // Generate initial tooltip
-    let current_mode = *screen_mode.lock().unwrap();
+    let current_mode = *screen_mode.lock().expect(
+        "Mutex poisoned during initial tooltip generation. This indicates a critical bug."
+    );
     let tooltip = TooltipText::for_state(state.sleep_disabled, current_mode);
 
     // Load icon
@@ -188,7 +206,7 @@ fn setup_tray(
     // Start wake service if needed
     if state.sleep_disabled {
         log::info!("Starting wake service on startup");
-        start_wake_service(is_awake.clone(), current_mode);
+        commands::start_wake_service(is_awake.clone(), current_mode);
     }
 
     let tray_handle = tray.clone();
@@ -234,37 +252,27 @@ fn setup_tray(
 /// Handle toggle sleep menu event
 ///
 /// ## Design Intent
-/// Delegates to core logic: updates state, persists, updates UI, starts/stops service.
+/// Delegates to shared business logic, updates UI based on result.
 ///
 /// ## Side Effects
-/// - Modifies is_awake flag
-/// - Writes state to disk
 /// - Updates menu item text
 /// - Updates tray icon and tooltip
-/// - Starts or stops wake service
 fn handle_toggle_sleep(
     is_awake: Arc<AtomicBool>,
     screen_mode: Arc<Mutex<ScreenMode>>,
     toggle_item: &Arc<tauri::menu::MenuItem<tauri::Wry>>,
     tray: &tauri::tray::TrayIcon<tauri::Wry>,
 ) {
-    let was_awake = is_awake.load(Ordering::SeqCst);
-    let new_awake = !was_awake;
-    is_awake.store(new_awake, Ordering::SeqCst);
-
-    log::info!("Toggling wake state: {} -> {}", was_awake, new_awake);
-
-    // Persist state
-    let current_mode = *screen_mode.lock().unwrap();
-    let new_state = AppState {
-        sleep_disabled: new_awake,
-        screen_mode: current_mode,
+    // Delegate to shared business logic
+    let (new_awake, current_mode) = match commands::toggle_sleep_impl(&is_awake, &screen_mode) {
+        Ok(result) => result,
+        Err(e) => {
+            log::error!("Toggle sleep failed: {}", e);
+            return;
+        }
     };
-    if let Err(e) = write_state(&new_state) {
-        log::error!("Failed to persist state: {}", e);
-    }
 
-    // Update UI
+    // Update UI based on result
     let menu_text = if new_awake {
         "Enable Sleep"
     } else {
@@ -277,23 +285,15 @@ fn handle_toggle_sleep(
         let _ = tray.set_icon(Some(Image::new(icon_data.as_slice(), 32, 32)));
         let _ = tray.set_tooltip(Some(tooltip.as_str()));
     }
-
-    // Start or stop service
-    if new_awake {
-        start_wake_service(is_awake.clone(), current_mode);
-    }
 }
 
 /// Handle screen mode change menu event
 ///
 /// ## Design Intent
-/// Updates screen mode preference and restarts wake service if active.
+/// Delegates to shared business logic, updates UI based on result.
 ///
 /// ## Side Effects
-/// - Modifies screen_mode
-/// - Writes state to disk
 /// - Updates menu item checkmarks
-/// - Restarts wake service if active
 /// - Updates tooltip
 fn handle_screen_mode_change(
     new_mode: ScreenMode,
@@ -303,21 +303,13 @@ fn handle_screen_mode_change(
     screen_off_item: &Arc<tauri::menu::MenuItem<tauri::Wry>>,
     tray: &tauri::tray::TrayIcon<tauri::Wry>,
 ) {
-    log::info!("Changing screen mode to: {:?}", new_mode);
-
-    *screen_mode.lock().unwrap() = new_mode;
-
-    // Persist state
-    let awake = is_awake.load(Ordering::SeqCst);
-    let new_state = AppState {
-        sleep_disabled: awake,
-        screen_mode: new_mode,
-    };
-    if let Err(e) = write_state(&new_state) {
-        log::error!("Failed to persist state: {}", e);
+    // Delegate to shared business logic
+    if let Err(e) = commands::change_screen_mode_impl(&is_awake, &screen_mode, new_mode) {
+        log::error!("Change screen mode failed: {}", e);
+        return;
     }
 
-    // Update menu checkmarks
+    // Update UI based on result
     let _ = screen_on_item.set_text(if new_mode == ScreenMode::KeepScreenOn {
         "\u{2713} Keep Screen On"
     } else {
@@ -329,14 +321,9 @@ fn handle_screen_mode_change(
         "Allow Screen Off"
     });
 
-    // Restart service if currently awake
+    // Update tooltip if currently awake
+    let awake = is_awake.load(Ordering::SeqCst);
     if awake {
-        log::info!("Restarting wake service with new screen mode");
-        is_awake.store(false, Ordering::SeqCst);
-        std::thread::sleep(Duration::from_millis(100));
-        is_awake.store(true, Ordering::SeqCst);
-        start_wake_service(is_awake.clone(), new_mode);
-
         let tooltip = TooltipText::for_state(true, new_mode);
         let _ = tray.set_tooltip(Some(tooltip.as_str()));
     }
@@ -355,7 +342,10 @@ fn handle_toggle_autostart(
     toggle_item: &Arc<tauri::menu::MenuItem<tauri::Wry>>,
 ) {
     let autostart_manager = app.autolaunch();
-    let is_enabled = autostart_manager.is_enabled().unwrap_or(false);
+    let is_enabled = autostart_manager.is_enabled().unwrap_or_else(|e| {
+        log::warn!("Failed to check autostart status during toggle: {}", e);
+        false
+    });
 
     log::info!("Toggling autostart: {} -> {}", is_enabled, !is_enabled);
 
@@ -382,22 +372,4 @@ fn handle_quit(app: &tauri::AppHandle, is_awake: Arc<AtomicBool>) {
     app.exit(0);
 }
 
-/// Start wake service in background
-///
-/// ## Design Intent
-/// Spawns asynchronous wake service task.
-///
-/// ## Side Effects
-/// - Spawns Tokio task
-/// - Starts F15 simulation
-/// - Sets platform display flags
-fn start_wake_service(is_awake: Arc<AtomicBool>, screen_mode: ScreenMode) {
-    let display_controller = platform::get_display_controller();
-    let service = WakeService::new(is_awake, display_controller);
 
-    tokio::spawn(async move {
-        if let Err(e) = service.run(screen_mode).await {
-            log::error!("Wake service error: {}", e);
-        }
-    });
-}

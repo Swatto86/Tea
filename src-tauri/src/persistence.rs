@@ -44,9 +44,9 @@ pub struct AppState {
 /// Creates parent directories if they don't exist.
 ///
 /// ## Returns
-/// Path to state file. Parent directories are guaranteed to exist if function
-/// succeeds (uses unwrap_or_default for directory creation - non-critical failure).
-fn get_state_file_path() -> PathBuf {
+/// Result with path to state file. Parent directories are guaranteed to exist
+/// if function succeeds. Returns StateIo error if directory creation fails.
+fn get_state_file_path() -> Result<PathBuf> {
     #[cfg(target_os = "linux")]
     {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
@@ -54,9 +54,13 @@ fn get_state_file_path() -> PathBuf {
             .unwrap_or_else(|_| format!("{}/.config", home));
         let mut path = PathBuf::from(xdg_config);
         path.push("tea");
-        fs::create_dir_all(&path).unwrap_or_default();
+        fs::create_dir_all(&path).map_err(|e| AppError::StateIo {
+            message: format!("Failed to create config directory at {}", path.display()),
+            cause: e.to_string(),
+            recovery_hint: "Ensure you have write permissions to the config directory.",
+        })?;
         path.push("state.json");
-        path
+        Ok(path)
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -66,9 +70,13 @@ fn get_state_file_path() -> PathBuf {
             .unwrap_or_else(|| std::path::Path::new("."))
             .to_path_buf();
         path.push("config");
-        fs::create_dir_all(&path).unwrap_or_default();
+        fs::create_dir_all(&path).map_err(|e| AppError::StateIo {
+            message: format!("Failed to create config directory at {}", path.display()),
+            cause: e.to_string(),
+            recovery_hint: "Ensure you have write permissions to the application directory.",
+        })?;
         path.push("state.json");
-        path
+        Ok(path)
     }
 }
 
@@ -87,7 +95,7 @@ fn get_state_file_path() -> PathBuf {
 /// ## Returns
 /// Ok(()) on success, AppError::StateIo or AppError::StateSerialization on failure
 pub fn write_state(state: &AppState) -> Result<()> {
-    let path = get_state_file_path();
+    let path = get_state_file_path()?;
     
     let json = serde_json::to_string_pretty(state).map_err(|e| AppError::StateSerialization {
         message: "Failed to serialize application state".to_string(),
@@ -116,7 +124,13 @@ pub fn write_state(state: &AppState) -> Result<()> {
 /// Loaded state on success, or default state if file doesn't exist or is corrupted.
 /// Never fails - returns default state as fallback.
 pub fn read_state() -> AppState {
-    let path = get_state_file_path();
+    let path = match get_state_file_path() {
+        Ok(p) => p,
+        Err(e) => {
+            log::error!("Failed to get state file path, using defaults: {}", e);
+            return AppState::default();
+        }
+    };
     
     match fs::read_to_string(&path) {
         Ok(content) => {
