@@ -65,6 +65,21 @@ Tea uses an intelligent approach combining F15 key simulation with platform-spec
 - Non-intrusive method that doesn't interfere with your work
 - **Only "Keep Screen On" mode available** - F15 simulation prevents both system and display sleep, making "Allow Screen Off" technically impossible on these platforms
 
+### Why F15?
+F15 was chosen because it is non-standard on most keyboards and therefore unlikely to conflict with application shortcuts or user workflows. Most applications don't bind actions to F15, making it safe to simulate without interrupting your work.
+
+### State Persistence
+Your preferences (sleep mode and screen control) are automatically saved to:
+- **Windows**: `%LOCALAPPDATA%\tea\state.json`
+- **Linux**: `~/.config/tea/state.json`
+- **macOS**: `~/Library/Application Support/tea/state.json`
+
+### Autostart
+The "Start at Login" feature uses platform-specific mechanisms:
+- **Windows**: Registry entry at `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+- **macOS**: LaunchAgent plist in `~/Library/LaunchAgents`
+- **Linux**: Desktop file in `~/.config/autostart`
+
 ### Benefits
 - Minimal system impact with F15 key simulation
 - Works reliably in the background on all platforms
@@ -76,12 +91,34 @@ Tea uses an intelligent approach combining F15 key simulation with platform-spec
 ### Project Structure
 ```
 tea/
+├── src/                # Frontend (minimal - app is system tray only)
+│   └── main.ts         # Entry point (no interactive UI)
 ├── src-tauri/          # Rust backend code
 │   ├── src/            # Source files
+│   │   ├── main.rs     # Application entry and tray setup
+│   │   ├── commands.rs # Tauri command handlers
+│   │   ├── core/       # Pure business logic
+│   │   ├── persistence.rs # State file management
+│   │   ├── platform.rs    # Platform-specific power APIs
+│   │   └── wake_service.rs # Background wake service
 │   ├── icons/          # Application icons
 │   └── Cargo.toml      # Rust dependencies
+├── tests/              # Test suite
+│   ├── autostart.test.ts  # Autostart documentation tests
+│   ├── e2e.test.ts        # End-to-end tests
+│   └── frontend.test.ts   # Frontend structure tests
 └── README.md           # This file
 ```
+
+### Testing
+Run the test suite:
+```bash
+npm test              # Watch mode
+npm run test:run      # Single run
+npm run test:coverage # With coverage report
+```
+
+Note: Tea is a system tray-only application. The HTML window is not shown to users, so frontend tests validate basic structure while the real UI is the system tray menu.
 
 ### Contributing
 1. Fork the repository

@@ -1,22 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
+// Tea - System Tray Sleep Prevention Utility
+// The UI for this application is the system tray icon.
+// This HTML window is not shown to users.
+// All functionality is accessed via the system tray menu.
 
-let greetInputEl: HTMLInputElement | null;
-let greetMsgEl: HTMLElement | null;
-
-async function greet() {
-  if (greetMsgEl && greetInputEl) {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsgEl.textContent = await invoke("greet", {
-      name: greetInputEl.value,
-    });
-  }
-}
-
-window.addEventListener("DOMContentLoaded", () => {
-  greetInputEl = document.querySelector("#greet-input");
-  greetMsgEl = document.querySelector("#greet-msg");
-  document.querySelector("#greet-form")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    greet();
-  });
-});
+console.log("Tea application loaded - UI is system tray only");

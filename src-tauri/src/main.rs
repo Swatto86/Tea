@@ -132,6 +132,10 @@ fn setup_tray(
         MenuItemBuilder::with_id(toggle_sleep_id.clone(), toggle_sleep_text).build(handle)?;
 
     // Configure autostart
+    // Uses tauri-plugin-autostart which provides platform-specific autostart:
+    // - Windows: Creates registry entry in HKCU\Software\Microsoft\Windows\CurrentVersion\Run
+    // - macOS: Creates LaunchAgent plist in ~/Library/LaunchAgents
+    // - Linux: Creates .desktop file in ~/.config/autostart
     let autostart_manager = handle.autolaunch();
     let is_autostart = autostart_manager.is_enabled().unwrap_or_else(|e| {
         log::warn!("Failed to check autostart status: {}", e);
@@ -139,7 +143,7 @@ fn setup_tray(
     });
 
     if is_autostart {
-        // Update autostart path if already enabled
+        // Update autostart path if already enabled (ensures correct path after app updates)
         if autostart_manager.disable().is_ok() {
             if let Err(e) = autostart_manager.enable() {
                 log::error!("Failed to update autostart path: {}", e);
@@ -363,6 +367,11 @@ fn handle_screen_mode_change(
 ///
 /// ## Design Intent
 /// Toggles autostart preference via Tauri plugin.
+///
+/// ## Platform Behavior
+/// - Windows: Modifies registry at HKCU\Software\Microsoft\Windows\CurrentVersion\Run
+/// - macOS: Creates/removes LaunchAgent plist file
+/// - Linux: Creates/removes .desktop file in autostart directory
 ///
 /// ## Side Effects
 /// - Enables or disables autostart

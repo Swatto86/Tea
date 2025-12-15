@@ -37,8 +37,9 @@ pub struct AppState {
 /// Centralizes path logic to ensure consistency across load/save operations.
 ///
 /// ## Platform Behavior
+/// - Windows: Uses %LOCALAPPDATA%\tea\state.json
 /// - Linux: Uses XDG_CONFIG_HOME or ~/.config/tea/state.json
-/// - Others: Uses executable directory/config/state.json
+/// - macOS: Uses ~/Library/Application Support/tea/state.json
 ///
 /// ## Side Effects
 /// Creates parent directories if they don't exist.
@@ -47,6 +48,21 @@ pub struct AppState {
 /// Result with path to state file. Parent directories are guaranteed to exist
 /// if function succeeds. Returns StateIo error if directory creation fails.
 fn get_state_file_path() -> Result<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let local_app_data = std::env::var("LOCALAPPDATA")
+            .or_else(|_| std::env::var("APPDATA"))
+            .unwrap_or_else(|_| ".".to_string());
+        let mut path = PathBuf::from(local_app_data);
+        path.push("tea");
+        fs::create_dir_all(&path).map_err(|e| AppError::StateIo {
+            message: format!("Failed to create config directory at {}", path.display()),
+            cause: e.to_string(),
+            recovery_hint: "Ensure you have write permissions to the AppData directory.",
+        })?;
+        path.push("state.json");
+        Ok(path)
+    }
     #[cfg(target_os = "linux")]
     {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
@@ -62,8 +78,24 @@ fn get_state_file_path() -> Result<PathBuf> {
         path.push("state.json");
         Ok(path)
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let mut path = PathBuf::from(home);
+        path.push("Library");
+        path.push("Application Support");
+        path.push("tea");
+        fs::create_dir_all(&path).map_err(|e| AppError::StateIo {
+            message: format!("Failed to create config directory at {}", path.display()),
+            cause: e.to_string(),
+            recovery_hint: "Ensure you have write permissions to the Application Support directory.",
+        })?;
+        path.push("state.json");
+        Ok(path)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+    {
+        // Fallback for other platforms
         let mut path = std::env::current_exe()
             .unwrap_or_else(|_| PathBuf::from("."))
             .parent()

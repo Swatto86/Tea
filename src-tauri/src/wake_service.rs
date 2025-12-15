@@ -8,6 +8,12 @@
 //! - Display control (platform-specific)
 //! - Task lifecycle (start/stop)
 //!
+//! ## Why F15?
+//! F15 was chosen because it is non-standard on most keyboards and therefore
+//! unlikely to conflict with application shortcuts or user workflows. Most
+//! applications don't bind actions to F15, making it safe to simulate without
+//! interrupting user work.
+//!
 //! ## Side Effects
 //! - On Windows with AllowScreenOff mode: Uses ES_CONTINUOUS API only (no F15)
 //! - On Windows with KeepScreenOn mode: Uses ES_DISPLAY_REQUIRED + F15 for redundancy
