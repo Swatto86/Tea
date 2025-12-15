@@ -42,8 +42,12 @@ pub trait DisplayControl {
 /// Windows only. Uses Win32 Power Management API.
 ///
 /// ## Behavior
-/// - KeepScreenOn: Sets ES_CONTINUOUS | ES_DISPLAY_REQUIRED
-/// - AllowScreenOff: Sets ES_CONTINUOUS only
+/// - KeepScreenOn: Sets ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+/// - AllowScreenOff: Sets ES_CONTINUOUS | ES_SYSTEM_REQUIRED (allows display sleep)
+///
+/// ## Design Intent
+/// ES_CONTINUOUS must be combined with ES_SYSTEM_REQUIRED to prevent system sleep.
+/// ES_DISPLAY_REQUIRED additionally prevents display from sleeping.
 ///
 /// ## Safety
 /// Uses unsafe Windows API calls. Platform guarantees these are safe when
@@ -55,16 +59,16 @@ pub struct WindowsDisplayControl;
 impl DisplayControl for WindowsDisplayControl {
     fn set_display_mode(&self, screen_mode: ScreenMode) {
         use windows::Win32::System::Power::{
-            SetThreadExecutionState, ES_CONTINUOUS, ES_DISPLAY_REQUIRED,
+            SetThreadExecutionState, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED,
         };
 
         unsafe {
             if screen_mode.should_keep_display_on() {
-                log::debug!("Setting Windows display mode: keep screen on");
-                SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+                log::debug!("Setting Windows display mode: keep screen on (system + display)");
+                SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED);
             } else {
-                log::debug!("Setting Windows display mode: allow screen off");
-                SetThreadExecutionState(ES_CONTINUOUS);
+                log::debug!("Setting Windows display mode: allow screen off (system only)");
+                SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
             }
         }
     }

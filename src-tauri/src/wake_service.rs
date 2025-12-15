@@ -4,16 +4,18 @@
 //!
 //! ## Design Intent
 //! Encapsulates the wake logic in a clean, testable service. Separates concerns:
-//! - Input simulation (F15 key press)
+//! - Input simulation (F15 key press - platform/mode dependent)
 //! - Display control (platform-specific)
 //! - Task lifecycle (start/stop)
 //!
 //! ## Side Effects
-//! - Simulates F15 key press every 60 seconds
+//! - On Windows with AllowScreenOff mode: Uses ES_CONTINUOUS API only (no F15)
+//! - On Windows with KeepScreenOn mode: Uses ES_DISPLAY_REQUIRED + F15 for redundancy
+//! - On non-Windows platforms: Simulates F15 key press every 60 seconds
 //! - May set platform display power flags
 //!
 //! ## Failure Modes
-//! - Input simulation initialization fails: Returns InputSimulation error
+//! - Input simulation initialization fails: Returns InputSimulation error (non-Windows or Windows KeepScreenOn)
 //! - Key press fails: Logs error but continues running (transient failure)
 
 use crate::core::ScreenMode;
@@ -59,15 +61,18 @@ impl WakeService {
     ///
     /// ## Design Intent
     /// Main wake loop. Runs until `running` flag is set to false.
-    /// Combines F15 simulation (all platforms) with optional display control.
+    /// On Windows with AllowScreenOff, uses ES_CONTINUOUS API alone (no F15) to allow screen sleep.
+    /// On Windows with KeepScreenOn or non-Windows platforms, uses F15 simulation.
     ///
     /// ## Side Effects
-    /// - Presses F15 key every 60 seconds
+    /// - On Windows AllowScreenOff: No F15 presses, screen can sleep normally
+    /// - On Windows KeepScreenOn: Presses F15 every 60 seconds + ES_DISPLAY_REQUIRED
+    /// - On non-Windows: Presses F15 every 60 seconds
     /// - Sets platform display flags based on screen_mode
     /// - Restores normal display mode on exit
     ///
     /// ## Failure Modes
-    /// - Input initialization fails: Returns InputSimulation error immediately
+    /// - Input initialization fails: Returns InputSimulation error (when F15 needed)
     /// - Individual key press fails: Logs error, continues running
     ///
     /// ## Returns
@@ -78,27 +83,49 @@ impl WakeService {
             screen_mode
         );
 
-        // Initialize input simulator
-        let settings = Settings::default();
-        let mut enigo =
-            Enigo::new(&settings).map_err(|e| AppError::InputSimulation {
-                message: "Failed to initialize input simulator".to_string(),
-                cause: e.to_string(),
-                recovery_hint:
-                    "Ensure the application has necessary permissions for input simulation.",
-            })?;
-
         // Apply platform display settings
         self.display_controller.set_display_mode(screen_mode);
 
-        // Main wake loop - press F15 every 60 seconds
+        // Determine if F15 simulation is needed
+        // On Windows with AllowScreenOff, ES_CONTINUOUS is sufficient - no F15 needed
+        // This allows the screen to sleep while keeping system awake
+        #[cfg(windows)]
+        let use_f15 = screen_mode.should_keep_display_on();
+        #[cfg(not(windows))]
+        let use_f15 = true;
+
+        log::info!(
+            "Wake strategy: F15 simulation={}, platform API=active",
+            use_f15
+        );
+
+        // Initialize input simulator only if needed
+        let mut enigo = if use_f15 {
+            let settings = Settings::default();
+            Some(
+                Enigo::new(&settings).map_err(|e| AppError::InputSimulation {
+                    message: "Failed to initialize input simulator".to_string(),
+                    cause: e.to_string(),
+                    recovery_hint:
+                        "Ensure the application has necessary permissions for input simulation.",
+                })?,
+            )
+        } else {
+            None
+        };
+
+        // Main wake loop
         while self.running.load(Ordering::SeqCst) {
-            log::trace!("Simulating F15 key press (screen mode: {:?})", screen_mode);
-            
-            if let Err(e) = enigo.key(Key::F15, Direction::Click) {
-                log::error!("F15 key press failed (continuing): {}", e);
+            if let Some(ref mut enigo) = enigo {
+                log::trace!("Simulating F15 key press (screen mode: {:?})", screen_mode);
+                
+                if let Err(e) = enigo.key(Key::F15, Direction::Click) {
+                    log::error!("F15 key press failed (continuing): {}", e);
+                } else {
+                    log::trace!("F15 key press successful");
+                }
             } else {
-                log::trace!("F15 key press successful");
+                log::trace!("Keeping system awake via platform API only (screen mode: {:?})", screen_mode);
             }
 
             tokio::time::sleep(Duration::from_secs(60)).await;

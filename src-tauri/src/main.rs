@@ -89,6 +89,11 @@ async fn main() {
 /// Configures UI layer - menu items, event handlers, initial state display.
 /// Contains no business logic, only UI rendering and event delegation.
 ///
+/// ## Platform Behavior
+/// Screen mode menu items (Keep Screen On / Allow Screen Off) are only shown
+/// on Windows where users have actual control choice. On macOS/Linux, F15
+/// simulation provides no screen control options, so menu items are omitted.
+///
 /// ## Arguments
 /// * `app` - Tauri application handle
 /// * `state` - Initial application state
@@ -96,7 +101,7 @@ async fn main() {
 /// * `screen_mode` - Shared screen mode preference
 ///
 /// ## Side Effects
-/// - Creates tray icon
+/// - Creates tray icon with platform-appropriate menu
 /// - Registers menu event handlers
 /// - May start wake service if state.sleep_disabled is true
 ///
@@ -150,30 +155,49 @@ fn setup_tray(
     let toggle_autostart_item =
         MenuItemBuilder::with_id(toggle_autostart_id.clone(), autostart_text).build(handle)?;
 
-    let screen_on_text = if state.screen_mode == ScreenMode::KeepScreenOn {
-        "\u{2713} Keep Screen On"
+    // Screen mode menu items are only shown on Windows where user has actual choice
+    // Non-Windows: F15 simulation provides no screen control options
+    // Use core logic (is_supported) to determine platform capability
+    let screen_on_item = if ScreenMode::KeepScreenOn.is_supported() {
+        let screen_on_text = if state.screen_mode == ScreenMode::KeepScreenOn {
+            "\u{2713} Keep Screen On"
+        } else {
+            "Keep Screen On"
+        };
+        Some(MenuItemBuilder::with_id(screen_on_id.clone(), screen_on_text).build(handle)?)
     } else {
-        "Keep Screen On"
+        None
     };
-    let screen_on_item =
-        MenuItemBuilder::with_id(screen_on_id.clone(), screen_on_text).build(handle)?;
 
-    let screen_off_text = if state.screen_mode == ScreenMode::AllowScreenOff {
-        "\u{2713} Allow Screen Off"
+    let screen_off_item = if ScreenMode::AllowScreenOff.is_supported() {
+        let screen_off_text = if state.screen_mode == ScreenMode::AllowScreenOff {
+            "\u{2713} Allow Screen Off"
+        } else {
+            "Allow Screen Off"
+        };
+        Some(MenuItemBuilder::with_id(screen_off_id.clone(), screen_off_text).build(handle)?)
     } else {
-        "Allow Screen Off"
+        None
     };
-    let screen_off_item =
-        MenuItemBuilder::with_id(screen_off_id.clone(), screen_off_text).build(handle)?;
 
     let quit_item = MenuItemBuilder::with_id(quit_id.clone(), "Quit").build(handle)?;
 
-    // Build tray menu
-    let tray_menu = MenuBuilder::new(handle)
-        .item(&toggle_sleep_item)
-        .separator()
-        .item(&screen_on_item)
-        .item(&screen_off_item)
+    // Build tray menu - conditionally include screen mode items (Windows only)
+    let mut menu_builder = MenuBuilder::new(handle).item(&toggle_sleep_item);
+    
+    // Add screen mode section only if items exist (Windows)
+    if screen_on_item.is_some() || screen_off_item.is_some() {
+        menu_builder = menu_builder.separator();
+        
+        if let Some(ref item) = screen_on_item {
+            menu_builder = menu_builder.item(item);
+        }
+        if let Some(ref item) = screen_off_item {
+            menu_builder = menu_builder.item(item);
+        }
+    }
+    
+    let tray_menu = menu_builder
         .separator()
         .item(&toggle_autostart_item)
         .separator()
@@ -184,9 +208,9 @@ fn setup_tray(
     let toggle_sleep_item = Arc::new(toggle_sleep_item);
     let toggle_sleep_item_clone = toggle_sleep_item.clone();
     let toggle_autostart_item = Arc::new(toggle_autostart_item);
-    let screen_on_item = Arc::new(screen_on_item);
+    let screen_on_item = screen_on_item.map(Arc::new);
     let screen_on_item_clone = screen_on_item.clone();
-    let screen_off_item = Arc::new(screen_off_item);
+    let screen_off_item = screen_off_item.map(Arc::new);
     let screen_off_item_clone = screen_off_item.clone();
 
     // Generate initial tooltip
@@ -220,7 +244,7 @@ fn setup_tray(
                 &toggle_sleep_item_clone,
                 &tray_handle,
             );
-        } else if *event.id() == screen_on_id {
+        } else if *event.id() == screen_on_id && screen_on_item_clone.is_some() {
             handle_screen_mode_change(
                 ScreenMode::KeepScreenOn,
                 is_awake.clone(),
@@ -229,7 +253,7 @@ fn setup_tray(
                 &screen_off_item_clone,
                 &tray_handle,
             );
-        } else if *event.id() == screen_off_id {
+        } else if *event.id() == screen_off_id && screen_off_item_clone.is_some() {
             handle_screen_mode_change(
                 ScreenMode::AllowScreenOff,
                 is_awake.clone(),
@@ -291,6 +315,7 @@ fn handle_toggle_sleep(
 ///
 /// ## Design Intent
 /// Delegates to shared business logic, updates UI based on result.
+/// Windows-only functionality (menu items don't exist on other platforms).
 ///
 /// ## Side Effects
 /// - Updates menu item checkmarks
@@ -299,8 +324,8 @@ fn handle_screen_mode_change(
     new_mode: ScreenMode,
     is_awake: Arc<AtomicBool>,
     screen_mode: Arc<Mutex<ScreenMode>>,
-    screen_on_item: &Arc<tauri::menu::MenuItem<tauri::Wry>>,
-    screen_off_item: &Arc<tauri::menu::MenuItem<tauri::Wry>>,
+    screen_on_item: &Option<Arc<tauri::menu::MenuItem<tauri::Wry>>>,
+    screen_off_item: &Option<Arc<tauri::menu::MenuItem<tauri::Wry>>>,
     tray: &tauri::tray::TrayIcon<tauri::Wry>,
 ) {
     // Delegate to shared business logic
@@ -309,17 +334,22 @@ fn handle_screen_mode_change(
         return;
     }
 
-    // Update UI based on result
-    let _ = screen_on_item.set_text(if new_mode == ScreenMode::KeepScreenOn {
-        "\u{2713} Keep Screen On"
-    } else {
-        "Keep Screen On"
-    });
-    let _ = screen_off_item.set_text(if new_mode == ScreenMode::AllowScreenOff {
-        "\u{2713} Allow Screen Off"
-    } else {
-        "Allow Screen Off"
-    });
+    // Update UI based on result (items only exist on Windows)
+    if let Some(ref item) = screen_on_item {
+        let _ = item.set_text(if new_mode == ScreenMode::KeepScreenOn {
+            "\u{2713} Keep Screen On"
+        } else {
+            "Keep Screen On"
+        });
+    }
+    
+    if let Some(ref item) = screen_off_item {
+        let _ = item.set_text(if new_mode == ScreenMode::AllowScreenOff {
+            "\u{2713} Allow Screen Off"
+        } else {
+            "Allow Screen Off"
+        });
+    }
 
     // Update tooltip if currently awake
     let awake = is_awake.load(Ordering::SeqCst);

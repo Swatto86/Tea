@@ -54,16 +54,16 @@ The compiled application will be available in `src-tauri/target/release`.
 
 ## How it Works
 
-Tea uses a hybrid approach combining F15 key simulation with platform-specific display control:
+Tea uses an intelligent approach combining F15 key simulation with platform-specific display control:
 
-### System Awake (All Platforms)
+### Windows Platform
+- **Keep Screen On** mode: Uses Windows `SetThreadExecutionState` API with `ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED` flags + F15 simulation for redundancy
+- **Allow Screen Off** mode: Uses only the Windows API with `ES_SYSTEM_REQUIRED` flag (no F15), which keeps the system awake while allowing the screen to sleep normally
+
+### Non-Windows Platforms (macOS, Linux)
 - Simulates a function key (F15) press every 60 seconds to prevent system sleep
 - Non-intrusive method that doesn't interfere with your work
-- Works consistently across Windows, macOS, and Linux
-
-### Screen Control (Windows Only)
-- **Keep Screen On** mode: Additionally uses Windows `SetThreadExecutionState` API with `ES_DISPLAY_REQUIRED` flag to prevent screen from turning off
-- **Allow Screen Off** mode: Only uses F15 simulation, allowing the screen to sleep while keeping system awake
+- **Only "Keep Screen On" mode available** - F15 simulation prevents both system and display sleep, making "Allow Screen Off" technically impossible on these platforms
 
 ### Benefits
 - Minimal system impact with F15 key simulation
