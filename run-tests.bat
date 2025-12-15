@@ -1,11 +1,11 @@
 @echo off
-REM Awake Test Runner Script for Windows
-REM Runs all tests for the Awake application
+REM Tea Test Runner Script for Windows
+REM Runs all tests for the Tea application
 
 setlocal enabledelayedexpansion
 
 echo ==================================
-echo   Awake Test Suite Runner
+echo   Tea Test Suite Runner
 echo ==================================
 echo.
 
@@ -173,7 +173,7 @@ REM E2E Tests Function (standalone only)
 echo Running End-to-End Tests...
 echo ======================================
 
-call npm test -- e2e.test.ts
+call npm run test:run tests/e2e.test.ts
 
 if %errorlevel% equ 0 (
     echo [OK] E2E tests passed
@@ -246,9 +246,6 @@ if "%COVERAGE%"=="true" (
     echo   - Frontend: coverage\index.html
     echo   - Backend: Run 'cd src-tauri && cargo tarpaulin --out Html' for backend coverage
 )
-
-echo.
-echo For detailed documentation, see TEST_HARNESS.md
 
 if "%TESTS_FAILED%"=="true" (
     exit /b 1

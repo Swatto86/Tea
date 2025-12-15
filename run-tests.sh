@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Awake Test Runner Script
-# Runs all tests for the Awake application
+# Tea Test Runner Script
+# Runs all tests for the Tea application
 
 set -e
 
 echo "=================================="
-echo "  Awake Test Suite Runner"
+echo "  Tea Test Suite Runner"
 echo "=================================="
 echo ""
 
@@ -137,7 +137,7 @@ run_e2e_tests() {
   echo -e "${YELLOW}Running End-to-End Tests...${NC}"
   echo "======================================"
 
-  if npm test -- e2e.test.ts; then
+  if npm run test:run tests/e2e.test.ts; then
     echo -e "${GREEN}✓ E2E tests passed${NC}"
     E2E_PASSED=true
   else
@@ -237,9 +237,6 @@ main() {
       echo "  - Backend: Run 'cd src-tauri && cargo tarpaulin --out Html' for backend coverage"
     fi
   fi
-
-  echo ""
-  echo "For detailed documentation, see TEST_HARNESS.md"
 }
 
 # Run main function
