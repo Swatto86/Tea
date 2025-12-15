@@ -1,12 +1,15 @@
-# Awake
+# Tea
 
 A cross-platform system tray application that prevents your system from going to sleep. Built with Rust and Tauri 2.0.
 
-![Awake Icon](src-tauri/icons/icon-allow-32x32.png)
+![Tea Icon](src-tauri/icons/icon-allow-32x32.png)
 
 ## Features
 
 - Prevent system sleep with a single click
+- **Screen Control Modes:**
+  - **Keep Screen On**: Prevents both system sleep and screen turning off (Windows only)
+  - **Allow Screen Off**: Keeps system awake but allows screen to sleep/turn off
 - System tray integration for easy access
 - Start at login option
 - Cross-platform support (Windows, macOS, Linux)
@@ -16,7 +19,7 @@ A cross-platform system tray application that prevents your system from going to
 ## Installation
 
 ### Pre-built Binaries
-Download the latest release for your platform from the [Releases](https://github.com/Swatto86/awake/releases) page.
+Download the latest release for your platform from the [Releases](https://github.com/Swatto86/tea/releases) page.
 
 ### Building from Source
 
@@ -28,8 +31,8 @@ Download the latest release for your platform from the [Releases](https://github
 #### Build Steps
 1. Clone the repository
    ```bash
-   git clone https://github.com/Swatto86/awake.git
-   cd awake
+   git clone https://github.com/Swatto86/tea.git
+   cd tea
    ```
 
 2. Build the application
@@ -44,20 +47,35 @@ The compiled application will be available in `src-tauri/target/release`.
 1. Launch the application
 2. Click the system tray icon (appears in your taskbar/menu bar)
 3. Select "Disable Sleep" to prevent your system from sleeping
-4. Optionally enable "Start at Login" for automatic startup
+4. Choose your screen mode:
+   - **Keep Screen On**: Prevents screen from turning off (Windows: uses native API)
+   - **Allow Screen Off**: Lets screen sleep but keeps system awake
+5. Optionally enable "Start at Login" for automatic startup
 
 ## How it Works
 
-Awake uses a non-intrusive method to keep your system awake by simulating a function key (F15) press every 60 seconds. This method:
-- Doesn't interfere with your work
-- Doesn't prevent screen dimming (only prevents sleep)
-- Works consistently across all supported platforms
+Tea uses a hybrid approach combining F15 key simulation with platform-specific display control:
+
+### System Awake (All Platforms)
+- Simulates a function key (F15) press every 60 seconds to prevent system sleep
+- Non-intrusive method that doesn't interfere with your work
+- Works consistently across Windows, macOS, and Linux
+
+### Screen Control (Windows Only)
+- **Keep Screen On** mode: Additionally uses Windows `SetThreadExecutionState` API with `ES_DISPLAY_REQUIRED` flag to prevent screen from turning off
+- **Allow Screen Off** mode: Only uses F15 simulation, allowing the screen to sleep while keeping system awake
+
+### Benefits
+- Minimal system impact with F15 key simulation
+- Works reliably in the background on all platforms
+- Additional Windows-specific screen control when needed
+- Preserves your settings between sessions
 
 ## Development
 
 ### Project Structure
 ```
-awake/
+tea/
 ├── src-tauri/          # Rust backend code
 │   ├── src/            # Source files
 │   ├── icons/          # Application icons

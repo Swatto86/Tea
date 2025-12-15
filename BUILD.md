@@ -1,4 +1,4 @@
-# Building Awake from Source
+# Building Tea from Source
 
 ## Prerequisites
 
@@ -33,8 +33,8 @@
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/awake.git
-cd awake
+git clone https://github.com/yourusername/tea.git
+cd tea
 ```
 
 2. Install dependencies:
@@ -48,9 +48,9 @@ cargo tauri build
 ```
 
 The built application will be available in:
-- Linux: `src-tauri/target/release/awake`
-- Windows: `src-tauri/target/release/awake.exe`
-- macOS: `src-tauri/target/release/awake.app`
+- Linux: `src-tauri/target/release/tea`
+- Windows: `src-tauri/target/release/tea.exe`
+- macOS: `src-tauri/target/release/tea.app`
 
 ## Development
 

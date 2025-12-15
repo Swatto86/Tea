@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Awake",
-  "version": "1.0.0",
-  "identifier": "com.awake.app",
+  "productName": "Tea",
+  "version": "2.0.0",
+  "identifier": "com.tea.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
