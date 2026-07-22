@@ -1,0 +1,56 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build Tauri app (portable exe + NSIS installer)
+        run: npm run tauri build
+
+      - name: Stage release assets
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+
+          # Portable single exe (raw compiled binary, MSVC static-links WebView2Loader)
+          $exe = Get-ChildItem "src-tauri/target/release/*.exe" -File |
+            Where-Object { $_.Name -notmatch "setup|build_script|installer" } |
+            Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $exe) { throw "portable exe not found" }
+          Copy-Item $exe.FullName "staging/Tea_${ver}_x64-portable.exe"
+
+          # NSIS installer produced by the tauri bundler
+          $nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*setup.exe" -File |
+            Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $nsis) { throw "NSIS installer not found" }
+          Copy-Item $nsis.FullName "staging/$($nsis.Name)"
+
+          Get-ChildItem staging | Format-Table Name, Length
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Tea ${{ github.ref_name }}
+          files: staging/*
+          fail_on_unmatched_files: true
